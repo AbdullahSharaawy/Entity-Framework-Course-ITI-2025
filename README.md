@@ -601,7 +601,8 @@ protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 }
 ```
 
-# Entity Framework Core 2025: Advanced Concepts & Deep Dive
+
+# session 2.1
 
 ## Key Concepts
 
