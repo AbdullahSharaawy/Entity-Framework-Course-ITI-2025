@@ -1,185 +1,378 @@
 # Entity-Framework-Course-ITI-2025
 
-Entity Framework Core (EF Core) - Course Notes
-This guide provides a comprehensive overview of Entity Framework Core based on the ITI 2025 instructional session. It covers the core concepts, setup, Database-First approach, querying, and change tracking.
-Key Concepts
-Object-Relational Mapper (ORM): EF Core is an ORM that maps relational database tables to business objects (C# classes) and vice versa.
-Automation: Replaces manual ADO.NET boilerplate (connections, commands, mappers) by automatically generating entities and handling CRUD operations.
-Approaches:
-Database First: Starting with an existing database and generating C# entities and contexts from it.
-Code First: Starting with C# classes and generating the database. (Focus of this session is Database First).
-Core Features:
-Mapping: Automatically maps tables to classes and columns to properties.
-LINQ to Entities: Allows writing C# LINQ queries that are automatically translated into SQL statements.
-Change Tracking: Monitors changes to objects in memory to efficiently apply inserts, updates, and deletes to the database.
-Setup & Installation
-EF Core is component-based. You only install the packages you need.
-Required Packages
-To use EF Core with SQL Server and enable database scaffolding, install the following packages via NuGet Package Manager or the Package Manager Console (PMC):
+If you want a **professional GitHub README format** that is easy to read and suitable for course notes, use the following structure:
 
+````markdown
+# Entity Framework Core (EF Core) - Course Notes
 
+> Comprehensive notes based on the ITI 2025 EF Core instructional session.
+>
+> Topics covered:
+> - EF Core fundamentals
+> - Database First approach
+> - DbContext & DbSet
+> - LINQ Queries
+> - Change Tracking
+> - CRUD Operations
+> - Best Practices
 
-PowerShell
-# Core SQL Server provider
+---
+
+# What is EF Core?
+
+**Entity Framework Core (EF Core)** is Microsoft's modern Object-Relational Mapper (ORM) for .NET.
+
+It allows developers to:
+
+- Map database tables to C# classes
+- Perform CRUD operations without writing SQL manually
+- Query data using LINQ
+- Track entity changes automatically
+
+## Main Benefits
+
+### 1. Object Relational Mapping (ORM)
+
+Maps:
+
+| Database | C# |
+|-----------|-----------|
+| Table | Class |
+| Row | Object |
+| Column | Property |
+
+### 2. LINQ Support
+
+Write queries using C# instead of raw SQL.
+
+```csharp
+var departments = db.Departments
+                    .Where(d => d.Capacity > 40);
+```
+
+### 3. Change Tracking
+
+EF Core automatically detects:
+
+- Added entities
+- Modified entities
+- Deleted entities
+
+and generates the required SQL commands.
+
+---
+
+# EF Core Approaches
+
+## Database First
+
+Start with an existing database and generate:
+
+- Entity Classes
+- DbContext
+
+from the database schema.
+
+✅ Focus of this course.
+
+## Code First
+
+Start with C# classes and generate the database automatically.
+
+---
+
+# Installation
+
+Install the required NuGet packages.
+
+## SQL Server Provider
+
+```powershell
 Install-Package Microsoft.EntityFrameworkCore.SqlServer
+```
 
-# Tools for migrations and scaffolding (Reverse Engineering)
+## EF Core Tools
+
+```powershell
 Install-Package Microsoft.EntityFrameworkCore.Tools
+```
 
+### Other Providers
 
-Note: If you were using a different database like Oracle or SQLite, you would install Microsoft.EntityFrameworkCore.Oracle or Microsoft.EntityFrameworkCore.Sqlite respectively.
-DbContext and DbSet
-DbContext
-The DbContext is a gateway or session between your C# application and the database. It manages the connection and executes database operations.
-DbSet<T>
-Inside the DbContext, a DbSet<T> represents a specific table. It allows you to query and save instances of the entity class.
+| Database | Package |
+|-----------|-----------|
+| SQL Server | Microsoft.EntityFrameworkCore.SqlServer |
+| Oracle | Microsoft.EntityFrameworkCore.Oracle |
+| SQLite | Microsoft.EntityFrameworkCore.Sqlite |
 
+---
 
+# DbContext and DbSet
 
-C#
+## DbContext
+
+The gateway between your application and the database.
+
+Responsibilities:
+
+- Managing database connections
+- Tracking entities
+- Executing queries
+- Saving changes
+
+## DbSet<T>
+
+Represents a table in the database.
+
+Example:
+
+```csharp
 public partial class AppContext : DbContext
 {
-    // DbSet represents the Departments table
     public virtual DbSet<Department> Departments { get; set; }
-    
-    // DbSet represents the Students table
+
     public virtual DbSet<Student> Students { get; set; }
 }
+```
 
+---
 
-Database First Approach (Scaffolding)
-To generate C# entities and the DbContext from an existing database, we use Reverse Engineering (Scaffolding).
-Using the CLI (Package Manager Console)
-Use the Scaffold-DbContext command to generate the models:
+# Database First (Scaffolding)
 
+Generate entities and DbContext from an existing database.
 
+## Scaffold Command
 
-PowerShell
-Scaffold-DbContext "Server=.;Database=TestAdo;Trusted_Connection=True;TrustServerCertificate=True" Microsoft.EntityFrameworkCore.SqlServer -OutputDir Models -ContextDir Data -Context AppContext
+```powershell
+Scaffold-DbContext `
+"Server=.;Database=TestAdo;Trusted_Connection=True;TrustServerCertificate=True" `
+Microsoft.EntityFrameworkCore.SqlServer `
+-OutputDir Models `
+-ContextDir Data `
+-Context AppContext
+```
 
+## Command Parameters
 
-Flags Explained:
--OutputDir Models: Places generated entity classes inside a Models folder.
--ContextDir Data: Places the generated DbContext inside a Data folder.
--Context AppContext: Names the context class AppContext.
--Force: Overwrites existing files if the database schema changes and you need to re-scaffold.
-Using EF Core Power Tools
-Alternatively, you can install the EF Core Power Tools extension for Visual Studio. It provides a visual UI to perform Reverse Engineering:
-Right-click the project -> EF Core Power Tools -> Reverse Engineer.
-Create the database connection.
-Select the required tables.
-Configure naming conventions (e.g., Pluralize/Singularize) and output directories.
-Querying Data with LINQ
-EF Core translates C# LINQ expressions into raw SQL queries.
-Deferred vs. Immediate Execution
-Concept
-Explanation
-Example
-Deferred Execution
-The query is built in memory but not sent to the SQL Server until the data is explicitly iterated over (e.g., using foreach or calling .ToList()).
-var results = db.Departments.Where(d => d.Capacity > 40);
-Immediate Execution
-The query is executed against the database immediately.
-var dept = db.Departments.FirstOrDefault(d => d.Id == 50);
+| Parameter | Description |
+|------------|------------|
+| `-OutputDir Models` | Entity classes location |
+| `-ContextDir Data` | DbContext location |
+| `-Context AppContext` | Context class name |
+| `-Force` | Overwrite existing files |
 
-Query Examples
-1. Retrieving filtered data with Projection (Select)
+---
 
+# EF Core Power Tools
 
+Alternative visual approach:
 
-C#
+1. Right Click Project
+2. EF Core Power Tools
+3. Reverse Engineer
+4. Create Database Connection
+5. Select Tables
+6. Configure Naming Options
+7. Generate Models
+
+---
+
+# Querying Data with LINQ
+
+EF Core translates LINQ expressions into SQL queries.
+
+---
+
+## Deferred Execution
+
+Query is built but not executed immediately.
+
+```csharp
+var results = db.Departments
+                .Where(d => d.Capacity > 40);
+```
+
+Execution occurs when:
+
+```csharp
+foreach(var item in results)
+{
+}
+```
+
+or
+
+```csharp
+results.ToList();
+```
+
+---
+
+## Immediate Execution
+
+Query executes immediately.
+
+```csharp
+var dept = db.Departments
+             .FirstOrDefault(d => d.Id == 50);
+```
+
+---
+
+# Query Examples
+
+## Filtering + Projection
+
+```csharp
 using var db = new AppContext();
 
 var results = db.Departments
     .Where(d => d.Capacity > 40)
-    .Select(d => new { d.DeptId, d.DeptName }); // Projection (Anonymous Object)
+    .Select(d => new
+    {
+        d.DeptId,
+        d.DeptName
+    });
 
-foreach (var item in results)
+foreach(var item in results)
 {
     Console.WriteLine($"{item.DeptId}: {item.DeptName}");
 }
+```
 
+---
 
-2. Retrieving a single record
+## Retrieve Single Record
 
+```csharp
+var department = db.Departments
+                   .FirstOrDefault(d => d.DeptId == 50);
+```
 
+---
 
-C#
-var department = db.Departments.FirstOrDefault(d => d.DeptId == 50);
+## View Generated SQL
 
+```csharp
+var sql = query.ToQueryString();
+```
 
-Tip: You can inspect the exact SQL query EF Core generates by calling the .ToQueryString() method on an IQueryable variable.
-Change Tracking and CRUD Operations
-EF Core automatically tracks the state of entities retrieved from the database (Unchanged, Modified, Added, Deleted).
-1. Update (Modified State)
-When you modify a retrieved object, EF Core marks its state as Modified.
+Useful for debugging and performance analysis.
 
+---
 
+# Change Tracking
 
-C#
-var dept = db.Departments.FirstOrDefault(d => d.DeptId == 1);
-dept.DeptName = "Java"; // State becomes Modified
+EF Core tracks entity states automatically.
 
-// Generates an UPDATE SQL statement
-db.SaveChanges(); 
+| State | Description |
+|---------|---------|
+| Unchanged | No modifications |
+| Added | New entity |
+| Modified | Existing entity changed |
+| Deleted | Entity marked for deletion |
 
+---
 
-2. Insert (Added State)
-To insert a new record, instantiate a new object and use .Add().
+# CRUD Operations
 
+## Update
 
+```csharp
+var dept = db.Departments
+             .FirstOrDefault(d => d.DeptId == 1);
 
-C#
-var newDept = new Department 
-{ 
-    DeptId = 2, 
-    DeptName = "Testing", 
-    Capacity = 100, 
-    Status = true 
+dept.DeptName = "Java";
+
+db.SaveChanges();
+```
+
+Generated SQL:
+
+```sql
+UPDATE Departments ...
+```
+
+---
+
+## Insert
+
+```csharp
+var newDept = new Department
+{
+    DeptId = 2,
+    DeptName = "Testing",
+    Capacity = 100,
+    Status = true
 };
 
-db.Departments.Add(newDept); // State becomes Added
+db.Departments.Add(newDept);
 
-// Generates an INSERT SQL statement
 db.SaveChanges();
+```
 
+Generated SQL:
 
-3. Delete (Deleted State)
-To delete a record, fetch it first, then use .Remove().
+```sql
+INSERT INTO Departments ...
+```
 
+---
 
+## Delete
 
-C#
-var deptToDelete = db.Departments.FirstOrDefault(d => d.DeptId == 2);
-db.Departments.Remove(deptToDelete); // State becomes Deleted
+```csharp
+var deptToDelete = db.Departments
+                     .FirstOrDefault(d => d.DeptId == 2);
 
-// Generates a DELETE SQL statement
+db.Departments.Remove(deptToDelete);
+
 db.SaveChanges();
+```
 
+Generated SQL:
 
-Callout: SaveChanges() acts as a transaction unit. It scans all tracked objects in memory and generates the necessary SQL operations simultaneously. If you don't call SaveChanges(), no changes will be made to the database!
-Best Practices & Tips
-Extending Generated Classes (Partial Classes)
-Because EF Core generates entities as partial classes, you should never write custom code (like overriding ToString()) directly inside the generated files. If you re-run the Scaffold-DbContext command (e.g., after altering a column in SQL Server), your custom code will be deleted.
-Solution: Create a separate file with the same class name and partial keyword.
-File 1: Generated by EF Core (Do not touch)
+```sql
+DELETE FROM Departments ...
+```
 
+---
 
+# SaveChanges()
 
-C#
-public partial class Department 
+`SaveChanges()` is the unit of work in EF Core.
+
+It:
+
+- Scans tracked entities
+- Detects changes
+- Generates SQL statements
+- Executes them as a transaction
+
+⚠️ Without calling `SaveChanges()`, no changes are persisted to the database.
+
+---
+
+# Best Practices
+
+## Use Partial Classes
+
+Never modify generated entity files directly.
+
+### Generated File
+
+```csharp
+public partial class Department
 {
     public int DeptId { get; set; }
+
     public string DeptName { get; set; }
 }
+```
 
+### Custom File
 
-File 2: Your Custom Code (Safe from overwriting)
-
-
-
-
-C#
+```csharp
 public partial class Department
 {
     public override string ToString()
@@ -187,5 +380,32 @@ public partial class Department
         return $"ID: {DeptId}, Name: {DeptName}";
     }
 }
+```
 
+### Why?
 
+When you re-run scaffolding:
+
+```powershell
+Scaffold-DbContext ...
+```
+
+generated files are overwritten, but your custom partial classes remain safe.
+
+---
+
+# Summary
+
+EF Core provides:
+
+- ORM capabilities
+- Automatic mapping
+- LINQ-based querying
+- Change tracking
+- Database First scaffolding
+- CRUD operations with minimal code
+
+By combining **DbContext**, **DbSet**, **LINQ**, and **Change Tracking**, developers can build data-driven .NET applications efficiently while reducing boilerplate code.
+````
+
+This format follows the style commonly used in high-quality GitHub repositories and renders cleanly with headings, tables, code blocks, callouts, and summaries.
