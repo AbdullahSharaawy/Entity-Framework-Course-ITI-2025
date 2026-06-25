@@ -199,3 +199,166 @@ public partial class Department
     }
 }
 ```
+
+
+# session 1.2
+
+## Key Concepts
+
+- **EF Core Setup & Dependencies**: Installing the required NuGet packages.
+- **Entity Creation**: Defining C# classes to represent database tables.
+- **DbContext & DbSet**: Setting up the gateway between the application and the database.
+- **Connection Configuration**: Specifying the database provider and connection string.
+- **Migrations**: Keeping the database schema in sync with your C# models.
+- **Model Configuration Strategies**: Guiding EF Core on how to map classes to tables using:
+  - Conventions
+  - Data Annotations
+  - Fluent API
+- **Interacting with Data**: Querying data using LINQ and proper resource disposal.
+
+---
+
+## 1. EF Core Setup & Dependencies
+
+To work with Entity Framework Core using SQL Server, you must install the following NuGet packages via the NuGet Package Manager:
+
+- `Microsoft.EntityFrameworkCore.SqlServer` (Provides the SQL Server database provider).
+- `Microsoft.EntityFrameworkCore.Tools` (Enables EF Core Package Manager Console commands like Migrations).
+
+---
+
+## 2. Entity Creation
+
+You start by defining models (Entities) in C# that will map to tables in your database.
+
+```csharp
+namespace Demo.Models
+{
+    public class Department
+    {
+        public int DeptId { get; set; }
+        public string DeptName { get; set; }
+        public int? Capacity { get; set; } // Nullable property
+    }
+}
+```
+
+---
+
+## 3. DbContext Setup & Connection Configuration
+
+The `DbContext` class acts as the bridge to the database. You define `DbSet<T>` properties for your entities (which translate to tables) and override the `OnConfiguring` method to specify the connection string.
+
+> **Tip:** You don't necessarily need a full SQL Server instance installed. Visual Studio comes with a lightweight LocalDB (`(localdb)\mssqllocaldb`) which is excellent for development.
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Demo.Models;
+
+namespace Demo.Context
+{
+    public class ITIContext : DbContext
+    {
+        // Define DbSets for your entities
+        public DbSet<Department> Departments { get; set; }
+        public DbSet<Student> Students { get; set; }
+
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            // Configure connection to SQL Server or LocalDB
+            optionsBuilder.UseSqlServer(
+                "Server=(localdb)\\mssqllocaldb;Database=ITIDatabase;Trusted_Connection=True;TrustServerCertificate=True;");
+        }
+    }
+}
+```
+
+---
+
+## 4. Migrations
+
+Migrations translate your C# model changes into SQL commands to update the database schema.
+
+Use the **Package Manager Console (PMC)** to execute these commands:
+
+| Command | Description |
+|----------|-------------|
+| `Add-Migration <Name>` | Scaffolds a new migration file based on changes in your models. Use a descriptive name (e.g., `InitialCreate`, `AddCapacityColumn`). |
+| `Update-Database` | Applies pending migrations to the database, actually creating/modifying the tables. |
+| `Remove-Migration` | Removes the last unapplied migration from your code if you need to revert and make changes before updating the database. |
+
+---
+
+## 5. Model Configuration Approaches
+
+EF Core needs to know how to create tables and columns (e.g., what is the Primary Key? Is a column nullable?). It determines this using three main strategies.
+
+### A. Conventions
+
+Default rules EF Core follows automatically.
+
+- A property named `Id` or `<ClassName>Id` (e.g., `DepartmentId`) is automatically configured as the **Primary Key** and made an **Identity** (auto-incrementing) column.
+- Reference types (like `string`) map to `nvarchar(MAX)` and are nullable by default (if C# Nullable Reference Types are disabled).
+
+### B. Data Annotations
+
+Attributes applied directly to entity properties for explicit configuration. It is easier to use than Fluent API but less comprehensive.
+
+```csharp
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+public class Student
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public int StdId { get; set; }
+
+    [Required]
+    [StringLength(20)]
+    [Column("StudentName")]
+    public string Name { get; set; }
+
+    public int? Age { get; set; }
+}
+```
+
+### C. Fluent API
+
+The most powerful configuration method, written inside the `OnModelCreating` method in the `DbContext`.
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<Department>(entity =>
+    {
+        entity.HasKey(d => d.DeptId);
+
+        entity.Property(d => d.DeptName)
+              .IsRequired()
+              .HasMaxLength(20)
+              .HasColumnName("DepartmentName");
+    });
+}
+```
+
+> **Important Precedence Rule:** `Fluent API > Data Annotations > Conventions`
+
+---
+
+## 6. Interacting with Data & Best Practices
+
+To query or manipulate data, instantiate the `DbContext` within a `using` block. The `DbContext` holds onto database connections and resources; the `using` statement ensures the `Dispose()` method is called automatically.
+
+```csharp
+using (ITIContext db = new ITIContext())
+{
+    var departments = db.Departments.ToList();
+
+    foreach (var item in departments)
+    {
+        Console.WriteLine(
+            $"ID: {item.DeptId} | Name: {item.DeptName} | Capacity: {item.Capacity}");
+    }
+}
+```
