@@ -362,3 +362,241 @@ using (ITIContext db = new ITIContext())
     }
 }
 ```
+
+
+# session 1.3
+
+## Key Concepts
+
+* Setting up `DbContext` and Connection Strings
+* Entity Configuration (Conventions, Data Annotations, Fluent API)
+* Working with Migrations
+* One-to-Many (1:N) Relationships
+* Many-to-Many (N:M) Relationships (Implicit vs. Explicit Join Tables)
+* One-to-One (1:1) and Self-Referencing Relationships
+* LocalDB vs. SQL Server Setup
+
+---
+
+## 1. Setting up `DbContext` and Connection Strings
+
+To start working with Entity Framework Core, you need to define your entities and configure your `DbContext`. `DbContext` acts as the bridge between your entities and the database.
+
+### Required NuGet Packages
+
+* `Microsoft.EntityFrameworkCore.SqlServer`
+* `Microsoft.EntityFrameworkCore.Tools`
+
+### Notes
+
+* **OnConfiguring**: Used to supply the connection string.
+* **DbSet**: Properties representing the tables in the database.
+
+```csharp
+public class ITIContext : DbContext
+{
+    public DbSet<Department> Departments { get; set; }
+    public DbSet<Student> Students { get; set; }
+    public DbSet<Course> Courses { get; set; }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        // Configuring the connection to SQL Server
+        optionsBuilder.UseSqlServer(
+            "Server=.;Database=ITI_DB;Trusted_Connection=True;");
+    }
+}
+```
+
+---
+
+## 2. Entity Configuration
+
+EF Core needs help determining how to map your C# classes to database tables. You can achieve this using three approaches:
+
+| Approach               | Description                                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------------------- |
+| **Naming Conventions** | EF Core automatically recognizes `Id` or `ClassNameId` as the Primary Key.                      |
+| **Data Annotations**   | Attributes placed directly on entity properties (e.g., `[Key]`, `[Required]`).                  |
+| **Fluent API**         | Written inside `OnModelCreating` in the `DbContext`. Offers the highest level of configuration. |
+
+### Data Annotations Example
+
+```csharp
+public class Student
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public int StudentId { get; set; }
+
+    [Required]
+    [StringLength(50)]
+    public string Name { get; set; }
+}
+```
+
+### Fluent API Example
+
+If you do not want to pollute your entity classes with attributes, or if you need advanced configurations (like composite keys), use Fluent API.
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<Course>(c =>
+    {
+        c.HasKey(e => e.CourseId);
+
+        c.Property(e => e.CourseId)
+         .ValueGeneratedNever();
+
+        c.Property(e => e.CourseName)
+         .IsRequired()
+         .HasMaxLength(20);
+    });
+}
+```
+
+> **Callout:** Fluent API takes precedence over Data Annotations, which in turn take precedence over default Naming Conventions.
+
+---
+
+## 3. Migrations
+
+Migrations are used to keep the database schema in sync with your C# models. EF Core tracks these changes using a `ModelSnapshot` file.
+
+| Command                | Description                                                           |
+| ---------------------- | --------------------------------------------------------------------- |
+| `Add-Migration <Name>` | Scaffolds a new migration file based on model changes.                |
+| `Update-Database`      | Applies pending migrations to the physical database.                  |
+| `Remove-Migration`     | Safely reverts the last unapplied migration and updates the snapshot. |
+
+> **Warning:** Never delete migration files manually from the folder. Always use `Remove-Migration` so EF Core can update the `ModelSnapshot` accordingly.
+
+---
+
+## 4. One-to-Many (1:N) Relationships
+
+A common relationship, such as a `Department` having many `Students`.
+
+### Entity Configuration
+
+```csharp
+public class Department
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+
+    // Collection navigation property
+    public virtual ICollection<Student> Students { get; set; }
+        = new HashSet<Student>();
+}
+
+public class Student
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+
+    [ForeignKey("Department")]
+    public int DeptNumber { get; set; }
+
+    // Reference navigation property
+    public virtual Department Department { get; set; }
+}
+```
+
+### Fluent API Equivalent
+
+```csharp
+modelBuilder.Entity<Department>()
+    .HasMany(d => d.Students)
+    .WithOne(s => s.Department)
+    .HasForeignKey(s => s.DeptNumber)
+    .IsRequired(true);
+```
+
+---
+
+## 5. Many-to-Many (N:M) Relationships
+
+A single `Student` can enroll in many `Courses`, and a single `Course` can have many `Students`.
+
+### Implicit Join Table
+
+Simply add collection navigation properties on both sides, and EF Core will automatically generate the join table.
+
+### Explicit Join Table (With Payload)
+
+If the join table requires additional attributes (such as a `Grade`), create a join entity manually.
+
+```csharp
+public class StudentCourse
+{
+    public int StudentId { get; set; }
+    public int CourseId { get; set; }
+    public int? Grade { get; set; }
+
+    public virtual Student Student { get; set; }
+    public virtual Course Course { get; set; }
+}
+```
+
+### Composite Key Configuration
+
+Data Annotations cannot create composite keys. Use Fluent API instead.
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<StudentCourse>()
+        .HasKey(sc => new { sc.StudentId, sc.CourseId });
+}
+```
+
+---
+
+## 6. One-to-One & Self-Referencing Relationships
+
+### One-to-One (1:1)
+
+Example: An `Instructor` and an `Office`.
+
+* Place navigation properties on both sides.
+* Place the Foreign Key on the dependent side.
+* If the Foreign Key is nullable (`int?`), the relationship is optional.
+* If the Foreign Key is non-nullable (`int`), the relationship is mandatory.
+
+### Self-Referencing Relationship
+
+Example: A `Student` having another `Student` as a leader.
+
+* Create a Foreign Key that references the same entity.
+* The Foreign Key should be nullable because the top-level leader has no leader.
+
+```csharp
+public class Student
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+
+    public int? LeaderId { get; set; }
+
+    [ForeignKey("LeaderId")]
+    public virtual Student Leader { get; set; }
+}
+```
+
+---
+
+## 7. LocalDB Configuration
+
+If you do not have a full SQL Server instance installed, Visual Studio ships with `LocalDB`. You can easily swap your connection string to target this lightweight local server.
+
+### Update the `OnConfiguring` Method
+
+```csharp
+protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+{
+    optionsBuilder.UseSqlServer(
+        @"Server=(localdb)\MSSQLLocalDB;Database=MonthTwoDB;Trusted_Connection=True;");
+}
+```
