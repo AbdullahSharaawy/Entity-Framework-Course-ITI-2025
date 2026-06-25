@@ -1,11 +1,8 @@
 # Entity-Framework-Course-ITI-2025
 
-If you want a **professional GitHub README format** that is easy to read and suitable for course notes, use the following structure:
 
-````markdown
-# Entity Framework Core (EF Core) - Course Notes
 
-> Comprehensive notes based on the ITI 2025 EF Core instructional session.
+> session 1.1.
 >
 > Topics covered:
 > - EF Core fundamentals
