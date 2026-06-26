@@ -767,3 +767,152 @@ Console.WriteLine(student.Department.DeptName);
 ```
 
 > **Warning:** Chaining too many `Include()` and `ThenInclude()` calls can create a Cartesian Explosion, resulting in massive amounts of redundant data being transferred. Always monitor your generated SQL queries to avoid performance bottlenecks.
+
+
+# Entity Framework Core: Advanced Modeling & Querying
+
+## Key Concepts
+
+* **EF Core Architecture Review**: DbContext, DbSets, and the role of tracking.
+* **Inheritance Mapping Strategies**: Managing object-oriented inheritance in relational databases using TPH, TPT, and TPC.
+* **Entity Tracking Optimization**: Using `AsNoTracking` to boost performance in read-only scenarios.
+* **Client-Side vs. Server-Side Evaluation**: Understanding how LINQ queries are translated and executed.
+* **Eager Loading**: Fetching related data (Navigation Properties) using `Include` and `ThenInclude`.
+
+---
+
+## Explanation
+
+### 1. EF Core Architecture Review
+
+Entity Framework Core acts as an Object-Relational Mapper (ORM), bridging your .NET Core application and the Database. It translates LINQ queries into SQL and tracks the state of retrieved objects (Added, Modified, Deleted, Unchanged) so changes can be persisted via `SaveChanges()`.
+
+> **Callout:** For EF Core to function, you need standard packages like `Microsoft.EntityFrameworkCore.SqlServer` for the database provider and `Microsoft.EntityFrameworkCore.Tools` to manage migrations.
+
+---
+
+### 2. Inheritance Mapping Strategies
+
+When dealing with object-oriented inheritance (e.g., `Student` and `Employee` inheriting from `Person`), relational databases don't natively understand class hierarchies. EF Core provides three strategies to map these models:
+
+#### A. Table-Per-Hierarchy (TPH)
+
+This is the **default behavior** in EF Core. The entire inheritance hierarchy is mapped to a **single table**.
+
+* EF Core adds a **`Discriminator`** column to distinguish the entity type (e.g., "Student" or "Employee").
+* **Pros:** High performance (no SQL `JOIN`s needed).
+* **Cons:** Columns specific to a child class will be `NULL` for other child classes.
+
+#### B. Table-Per-Type (TPT)
+
+Each class (base and derived) is mapped to its own table. Derived tables are linked to the base table using a Foreign Key that also acts as a Primary Key.
+
+* **Configuration:** Configured via the Fluent API.
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<Person>().UseTptMappingStrategy();
+}
+
+```
+
+* **Pros:** Data is normalized without `NULL` columns.
+* **Cons:** Reading data requires complex `JOIN`s, which can negatively impact performance.
+
+#### C. Table-Per-Concrete-Class (TPC)
+
+A table is created *only* for concrete classes (classes that can be instantiated). Abstract base classes do not get their own tables. All properties from the base class are duplicated into the tables of the derived classes.
+
+* **Configuration:** Make the base class `abstract` and apply the strategy.
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    modelBuilder.Entity<Person>().UseTpcMappingStrategy();
+}
+
+```
+
+#### Mapping Strategy Comparison
+
+| Feature | TPH (Table Per Hierarchy) | TPT (Table Per Type) | TPC (Table Per Concrete) |
+| --- | --- | --- | --- |
+| **Number of Tables** | 1 for the whole hierarchy | 1 for every class (base & derived) | 1 for every concrete derived class |
+| **Performance** | Fastest (No Joins) | Slowest (Requires Joins) | Fast (No Joins, but duplicated schema) |
+| **Nullability** | Has unneeded `NULL` columns | Highly normalized | Highly normalized |
+| **Discriminator** | Yes | No | No |
+
+---
+
+### 3. Entity Tracking Optimization
+
+EF Core tracks the state of entities retrieved from the database by default. While this is necessary for updates, the tracking overhead is wasteful if you only intend to *read* data.
+
+#### Disabling Tracking for a Specific Query
+
+To boost performance for read-only queries, use `.AsNoTracking()`. The entity state will remain `Detached`, and `SaveChanges()` will ignore it.
+
+```csharp
+var student = db.Students.AsNoTracking().FirstOrDefault(s => s.Id == 1);
+// Modification will NOT be saved to the database
+student.Name = "Hamada"; 
+db.SaveChanges(); 
+
+```
+
+#### Disabling Tracking Globally
+
+If a `DbContext` is primarily used for reporting or reading data, you can disable tracking globally in `OnConfiguring`:
+
+```csharp
+protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+{
+    optionsBuilder.UseSqlServer("YourConnectionString")
+                  .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+}
+
+```
+
+---
+
+### 4. Client-Side vs. Server-Side Evaluation
+
+When writing LINQ queries, EF Core attempts to translate the entire expression into SQL to run on the **Server (Database)**.
+
+If your LINQ query contains a custom C# function that SQL Server doesn't understand, EF Core behavior depends on where the function is used:
+
+* **In `Select` (Projection):** EF Core retrieves the required raw data from the server, then evaluates the custom function in the application memory (Client-Side).
+* **In `Where` (Filtering):** EF Core **throws a runtime exception** because it cannot execute the C# method on the database server to filter the rows.
+
+> **Best Practice:** Keep operations within the database server as much as possible. If you strictly need client-side evaluation for a filter, you must pull the data into memory first using `.ToList()`, but be warned—this fetches the entire table and degrades performance heavily.
+
+```csharp
+// BAD: Throws exception because MyCustomFunction cannot be translated to SQL
+var result = db.Students.Where(s => MyCustomFunction(s.Name)).ToList();
+
+// WORKAROUND: Pull to memory first (Not recommended for large tables)
+var result = db.Students.ToList().Where(s => MyCustomFunction(s.Name)).ToList();
+
+```
+
+---
+
+### 5. Eager Loading Related Data
+
+By default, Navigation Properties (related entities) are `NULL` when you query a record. To load related data simultaneously in one query, use **Eager Loading**.
+
+* Use **`Include()`** to load direct relationships.
+* Use **`ThenInclude()`** to load nested relationships (relationships of the included entity).
+
+```csharp
+var student = db.Students
+    .Include(s => s.Department)                  // Loads the Department the Student belongs to
+    .ThenInclude(d => d.Courses)                 // Loads the Courses inside that Department
+    .FirstOrDefault(s => s.StudentId == 1);
+
+Console.WriteLine(student.Department.DeptName);
+
+```
+
+> **Warning:** Overusing `Include` and `ThenInclude` can lead to a **Cartesian Explosion**. This occurs when multiple one-to-many relationships are joined, multiplying the returned rows exponentially and crashing application performance. Always monitor the generated SQL using tools like SQL Server Profiler.
