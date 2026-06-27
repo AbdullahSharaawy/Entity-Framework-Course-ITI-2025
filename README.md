@@ -752,3 +752,187 @@ Console.WriteLine(student.Department.DeptName);
 ```
 
 > **Warning:** Overusing `Include` and `ThenInclude` can lead to a **Cartesian Explosion**. This occurs when multiple one-to-many relationships are joined, multiplying the returned rows exponentially and crashing application performance. Always monitor the generated SQL using tools like SQL Server Profiler.
+
+
+
+# session 2.2
+
+## Key Concepts
+
+* **Explicit Loading vs. Lazy Loading:** Strategies for efficiently fetching related data.
+* **Configuration Separation:** Refactoring `OnModelCreating` by organizing Fluent API configurations into separate modular classes using `IEntityTypeConfiguration<T>`.
+* **Assembly Configuration Loading:** Dynamically registering all entity configurations at once using `ApplyConfigurationsFromAssembly`.
+* **Raw SQL Queries:** Executing raw SQL statements mapped directly to entities using `FromSql`.
+* **Custom View Mapping (`SqlQuery`):** Mapping raw SQL query results to custom Data Transfer Objects (DTOs) or View Models.
+* **Stored Procedures:** Executing stored procedures via raw SQL and scripting them programmatically through EF Core Migrations using `migrationBuilder.Sql()`.
+
+## Explanation
+
+### 1. Explicit Loading
+
+Explicit loading allows you to retrieve the main entity first and deliberately issue a secondary query to fetch its related data later. This development effort provides granular control, allowing you to delay loading heavy relational data until your application's logic explicitly requires it.
+
+* **For single objects (1-to-1 or Many-to-1):** Use the `Reference()` method.
+* **For collections (1-to-Many):** Use the `Collection()` method.
+
+```csharp
+// Fetch the main entity first
+var student = db.Students.FirstOrDefault(s => s.Id == 1);
+
+// Explicitly load a single related object (Navigation Property)
+db.Entry(student).Reference(s => s.Department).Load();
+
+// Explicitly load a related collection 
+var department = db.Departments.FirstOrDefault(d => d.Id == 1);
+db.Entry(department).Collection(d => d.Students).Load();
+
+```
+
+### 2. Lazy Loading
+
+Lazy loading defers the initialization of related data until the exact moment the navigation property is accessed in the code. EF Core achieves this by generating proxy classes at runtime that override your navigation properties to fetch data seamlessly.
+
+**Implementation Steps:**
+
+1. **Mark Navigation Properties as `virtual**`: This is mandatory so the proxy class can override them.
+```csharp
+public virtual Department Department { get; set; }
+public virtual ICollection<Student> Students { get; set; } = new List<Student>();
+
+```
+
+
+2. **Install the Proxies Package via CLI**:
+```bash
+dotnet add package Microsoft.EntityFrameworkCore.Proxies
+
+```
+
+
+3. **Enable Lazy Loading in `DbContext**`:
+```csharp
+protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+{
+    optionsBuilder
+        .UseLazyLoadingProxies() // Enable Proxies
+        .UseSqlServer("Your_Connection_String");
+}
+
+```
+
+
+
+> **Performance Tip:** While convenient for desktop applications, Lazy Loading can lead to the "N+1 Query Problem" in web applications, causing significant performance bottlenecks. For web APIs, Eager Loading (`Include`) or Explicit Loading is heavily recommended.
+
+### 3. Refactoring Fluent API Configurations
+
+As your database schemas and domain models grow, keeping all Fluent API configurations tightly coupled inside `OnModelCreating` becomes unmanageable. The standard architectural practice is to isolate each entity's configuration into its own dedicated class.
+
+**Creating the Configuration Class:**
+
+```csharp
+public class StudentConfiguration : IEntityTypeConfiguration<Student>
+{
+    public void Configure(EntityTypeBuilder<Student> builder)
+    {
+        builder.HasKey(s => s.Id);
+        builder.Property(s => s.Name).IsRequired().HasMaxLength(50);
+        
+        // Configuring relationships
+        builder.HasOne(s => s.Department)
+               .WithMany(d => d.Students)
+               .HasForeignKey(s => s.DeptId);
+    }
+}
+
+```
+
+**Applying Configurations in DbContext:**
+Instead of applying them one by one, you can scan the assembly and intelligently load all classes implementing `IEntityTypeConfiguration<T>` with a single method call.
+
+```csharp
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    // Scans the given assembly and applies all configuration classes dynamically
+    modelBuilder.ApplyConfigurationsFromAssembly(typeof(StudentConfiguration).Assembly);
+    
+    base.OnModelCreating(modelBuilder);
+}
+
+```
+
+### 4. Raw SQL Queries and Stored Procedures
+
+When standard LINQ operations aren't sufficient for complex data aggregations or when executing legacy SQL logic, EF Core provides pathways for raw SQL execution.
+
+#### Mapping to Tracked Entities
+
+Use `FromSql` or `FromSqlInterpolated` when your raw SQL returns complete, tracked entity objects.
+
+```csharp
+int targetAge = 20;
+// Using string interpolation automatically generates parameterized SQL to prevent SQL injection
+var olderStudents = db.Students
+    .FromSql($"SELECT * FROM Students WHERE Age > {targetAge}")
+    .ToList();
+
+```
+
+#### Mapping to Custom DTOs / Views
+
+If your SQL query only selects a subset of columns (e.g., `SELECT Id, Name FROM Students`), mapping it to the original `Student` entity will throw an `InvalidOperationException` because EF Core requires all properties to be present. Instead, build a DTO (Data Transfer Object) class and map the projection using `SqlQuery`.
+
+```csharp
+// 1. Create a DTO / View Model representing the projection
+public class StudentView 
+{
+    public int StudentId { get; set; }
+    public string Name { get; set; }
+}
+
+// 2. Query and map the subset data directly to the DTO
+var partialData = db.Database
+    .SqlQuery<StudentView>($"SELECT Id AS StudentId, Name FROM Students")
+    .ToList();
+
+```
+
+#### Executing and Creating Stored Procedures
+
+You can execute an existing stored procedure using `FromSql` just like a regular query:
+
+```csharp
+var students = db.Students.FromSql($"EXEC GetStudents").ToList();
+
+```
+
+To **create** a Stored Procedure, Database View, or Trigger seamlessly inside the database using Code-First Migrations, generate an empty migration script and utilize `migrationBuilder.Sql()`:
+
+```bash
+dotnet ef migrations add CreateGetDepartmentsProc
+
+```
+
+```csharp
+public partial class CreateGetDepartmentsProc : Migration
+{
+    protected override void Up(MigrationBuilder migrationBuilder)
+    {
+        // Define the execution logic 
+        migrationBuilder.Sql(@"
+            CREATE PROCEDURE GetDepartments
+            AS
+            BEGIN
+                SELECT * FROM Departments
+            END
+        ");
+    }
+
+    protected override void Down(MigrationBuilder migrationBuilder)
+    {
+        // Rollback instruction
+        migrationBuilder.Sql("DROP PROCEDURE GetDepartments");
+    }
+}
+
+```
